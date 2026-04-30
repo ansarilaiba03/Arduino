@@ -24,21 +24,21 @@ BRIGHT = 18
 
 
 // Left Motor
-const int LEFT_PWM_CHANNEL = 18;   // PWM channel for left motor
-const int LEFT_DIR_PIN = 19;  // Direction pin for left motor
+const int LEFT_PWM_CHANNEL = 25;   // PWM channel for left motor
+const int LEFT_DIR_PIN = 26;  // Direction pin for left motor
 
 
 // Right Motor
 const int RIGHT_PWM_CHANNEL = 16;  // PWM channel for right motor
 const int RIGHT_DIR_PIN = 17;  // Direction pin for right motor
-const int b = 325; // 106;  //dist between wheels
-const int r = 76;  //65;    //wheel radius
+const int b = 222; //325; // 106;  //dist between wheels
+const int r = 65; //76;      //wheel radius
 int lx, // left-right
  ly, //forward-backward
  rx, //turning left-right
  ry, //up-down (unused)
  tri, cir, squ, cro, l2, r2,l1,r1,left,right,up,down;
-int buff = 10;   //ignores small stick movements
+int buff = 5;   //ignores small stick movements
 double targetwl, //speed for left wheel
 targetwr; // speed for right wheel
 int deadzone=0; //amt to subtract from stick input for smooth control
@@ -53,14 +53,14 @@ void compute2Wheel()
   targetwl=((ly*200-(rX*b/2))/r); 
 
   //speed  control
-  float speedFactor = 0.3;  // Change this value to control speed
+  float speedFactor = 0.1;  // Change this value to control speed
   targetwr = targetwr * speedFactor;
   targetwl = targetwl * speedFactor;
   // -------------------------
 
   // Limit wheel speeds so they stay within valid motor range
   targetwr = constrain(targetwr, -255, 255);
-  targetwl = constrain(targetwl, -255, 255);
+  targetwl = constrain(targetwl, -200, 200);
 
   // print wheel speeds
   Serial.print("Right Wheel: ");

@@ -1,15 +1,15 @@
 
 // Motor 1 pins
-#define M1_STEP 3
-#define M1_DIR  2
+#define M1_STEP 17
+#define M1_DIR  16
 
-// Motor 2 pins
-#define M2_STEP 5
-#define M2_DIR  4
+// Motor 2 pins (left)
+#define M2_STEP 19
+#define M2_DIR  18
 
 // Timing variables
 unsigned long previousMillis = 0;
-const unsigned long stepInterval = 2;  // milliseconds between steps
+const unsigned long stepInterval = 1;  // milliseconds between steps
 
 // Step states
 bool m1StepState = false;
@@ -28,7 +28,7 @@ void setup() {
   digitalWrite(M1_STEP, LOW);
   digitalWrite(M2_STEP, LOW);
 }
-
+cv
 void loop() {
   unsigned long currentMillis = millis();
 
@@ -44,9 +44,6 @@ void loop() {
     m2StepState = !m2StepState;
     digitalWrite(M2_STEP, m2StepState);
   }
-
-  // Other tasks can run here simultaneously
-  // Example: reading sensors or blinking LEDs
 }
 
 

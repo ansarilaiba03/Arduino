@@ -1,6 +1,6 @@
 // Motor pins
-#define STEP_PIN 3
-#define DIR_PIN 2
+#define STEP_PIN 17
+#define DIR_PIN 16
 
 // Timing variables
 unsigned long previousMillis = 0;
