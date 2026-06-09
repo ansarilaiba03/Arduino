@@ -143,9 +143,9 @@ void compute_wheel_speed() {
   float Vy = (ly/ 127.0f) * maxLinearSpeed;   
   float w = (rx/ 127.0f) * maxOmega; 
 
-  // Serial.print("Vx: "); Serial.print(Vx);
-  // Serial.print(" Vy: "); Serial.print(Vy);
-  // Serial.print(" w: "); Serial.println(w);
+  Serial.print("Vx: "); Serial.print(Vx);
+  Serial.print(" Vy: "); Serial.print(Vy);
+  Serial.print(" w: "); Serial.println(w);
 
   wfr_speed = ((Vy - Vx + w * (L_half + W_half)) / rad);
   wfl_speed = ((Vy - Vx - w * (L_half + W_half)) / rad);
@@ -165,10 +165,10 @@ void apply_wheel_speed() {
   wrr_pwm = constrain(abs(wrr_speed) * 78.1f, 0.0, 100.0);
   wrl_pwm = constrain(abs(wrl_speed) * 78.1f, 0.0, 100.0);
 
-  // Serial.print("WFR: "); Serial.print(wfr_pwm);
-  // Serial.print(" WFL: "); Serial.print(wfl_pwm);
-  // Serial.print(" WRR: "); Serial.print(wrr_pwm);
-  // Serial.print(" WRL: "); Serial.println(wrl_pwm);
+  Serial.print("WFR: "); Serial.print(wfr_pwm);
+  Serial.print(" WFL: "); Serial.print(wfl_pwm);
+  Serial.print(" WRR: "); Serial.print(wrr_pwm);
+  Serial.print(" WRL: "); Serial.println(wrl_pwm);
 
   analogWrite(wfr_pwm_pin, wfr_pwm);
   analogWrite(wfl_pwm_pin, wfl_pwm);

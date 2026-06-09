@@ -6,8 +6,8 @@
 
 // ------------------- Motor Pins -------------------
 const int RIGHT_DIR_PIN = 7;
-const int RIGHT_PWM_CHANNEL = 9;   // PWM pin
-const int LEFT_DIR_PIN = 8;
+const int RIGHT_PWM_CHANNEL = 8;   // PWM pin
+const int LEFT_DIR_PIN = 9;
 const int LEFT_PWM_CHANNEL = 10;  // PWM pin
 
 // ------------------- Proximity Sensors -------------------
@@ -17,7 +17,7 @@ int obstacle = 0;
 int previousObstacle = 0;  // track previous obstacle state
 
 // ------------------- IMU -------------------
-Adafruit_BNO055 bno = Adafruit_BNO055(55);
+// Adafruit_BNO055 bno = Adafruit_BNO055(55);
 
 int motorSpeed = 30;
 
@@ -48,7 +48,7 @@ void setup() {
 
   Serial.println("Setup complete");
 
-  // Start moving forward immediately
+  Start moving forward immediately
   moveForward();
 }
 

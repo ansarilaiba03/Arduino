@@ -1,36 +1,15 @@
-/*
-connections
-DIR1 = 17
-PWM1 = 16
-DIR2 = 19
-PWM2 = 18
-GND = GND
-
-IMU
-VIN = 5V
-GND = GND  
-SDA = 20 (MEGA)
-SCL = 21 (MEGA)
-
-ENCODER
-ALEFT = 2 
-BLEFT = 3
-ARIGHT = 19
-BRIGHT = 18
-*/
- 
 #include <Arduino.h>  // Add this for ESP32 functionality
 #include <ps5Controller.h>
 
 
 // Left Motor
-const int LEFT_PWM_CHANNEL = 25;   // PWM channel for left motor
-const int LEFT_DIR_PIN = 26;  // Direction pin for left motor
+const int LEFT_PWM_CHANNEL = 22;   // PWM channel for left motor
+const int LEFT_DIR_PIN = 21;  // Direction pin for left motor
 
 
 // Right Motor
-const int RIGHT_PWM_CHANNEL = 16;  // PWM channel for right motor
-const int RIGHT_DIR_PIN = 17;  // Direction pin for right motor
+const int RIGHT_PWM_CHANNEL = 19;  // PWM channel for right motor
+const int RIGHT_DIR_PIN = 18;  // Direction pin for right motor
 const int b = 222; //325; // 106;  //dist between wheels
 const int r = 65; //76;      //wheel radius
 int lx, // left-right
@@ -53,14 +32,14 @@ void compute2Wheel()
   targetwl=((ly*200-(rX*b/2))/r); 
 
   //speed  control
-  float speedFactor = 0.1;  // Change this value to control speed
+  float speedFactor = 0.3;  // Change this value to control speed
   targetwr = targetwr * speedFactor;
   targetwl = targetwl * speedFactor;
   // -------------------------
 
   // Limit wheel speeds so they stay within valid motor range
   targetwr = constrain(targetwr, -255, 255);
-  targetwl = constrain(targetwl, -200, 200);
+  targetwl = constrain(targetwl, -35, 35);
 
   // print wheel speeds
   Serial.print("Right Wheel: ");
@@ -75,20 +54,20 @@ void applySpeed()
 {
   if (targetwl >= 0) 
   {
-  digitalWrite(LEFT_DIR_PIN, LOW); // LOW = forward
+  digitalWrite(LEFT_DIR_PIN, HIGH); // LOW = forward
   analogWrite(LEFT_PWM_CHANNEL, targetwl);
   } 
   else
   {
-  digitalWrite(LEFT_DIR_PIN, HIGH); // HIGH = backward
+  digitalWrite(LEFT_DIR_PIN, LOW); // HIGH = backward
   analogWrite(LEFT_PWM_CHANNEL, -targetwl);
   }
   if (targetwr >= 0) 
   {
-  digitalWrite(RIGHT_DIR_PIN, LOW); 
+  digitalWrite(RIGHT_DIR_PIN, HIGH); 
   analogWrite(RIGHT_PWM_CHANNEL, targetwr);
   } else {
-  digitalWrite(RIGHT_DIR_PIN, HIGH);
+  digitalWrite(RIGHT_DIR_PIN, LOW);
   analogWrite(RIGHT_PWM_CHANNEL, -targetwr);
   }
 

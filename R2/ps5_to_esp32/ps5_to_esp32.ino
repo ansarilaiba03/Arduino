@@ -27,7 +27,7 @@ void loop() {
   uint8_t packet[] = {right, left, up, down};
   
   Serial1.write((uint8_t*)packet, sizeof(packet));
-  // Serial.print(right), Serial.print(" "), Serial.print(left), Serial.print(" "), Serial.print(up), Serial.print(" "), Serial.println(down);
+  Serial.print(right), Serial.print(" "), Serial.print(left), Serial.print(" "), Serial.print(up), Serial.print(" "), Serial.println(down);
 
   delay(100);
 }

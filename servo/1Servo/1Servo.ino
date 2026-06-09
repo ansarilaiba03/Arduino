@@ -9,14 +9,14 @@ white - D9
 Servo myservo;  // create servo object to control a servo
 // twelve servo objects can be created on most boards
 
-int pos = 0;    // variable to store the servo position
+int pos = 240;    // variable to store the servo position
 
 void setup() {
   myservo.attach(9);  // attaches the servo on pin 9 to the servo object
 }
 
 void loop() {
-  for (pos = 0; pos <= 100; pos++) { // goes from 0 degrees to 180 degrees
+  for (pos = 0; pos <= 360; pos++) { // goes from 0 degrees to 180 degrees
     // in steps of 1 degree
     myservo.write(pos);              // tell servo to go to position in variable 'pos'
     delay(10);                       // delay between angle rotation
@@ -25,4 +25,3 @@ void loop() {
   //   myservo.write(pos);              // tell servo to go to position in variable 'pos'
   //   delay(10);                       
   }
-}
