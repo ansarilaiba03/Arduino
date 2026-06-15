@@ -4,7 +4,7 @@ Servo myServo;
 Servo myservo1;
 
 void setup() {
-  myServo.attach(2);
+  myServo.attach(10);
   myservo1.attach(3);   // Servo signal connected to pin 9
   myservo1.write(0);
   delay(500);
