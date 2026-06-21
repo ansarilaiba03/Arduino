@@ -4,11 +4,31 @@
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BNO055.h>
 #include <utility/imumaths.h>
+#include "HUSKYLENS.h"
+#include "SoftwareSerial.h"
 
 // =====================================
 // BNO055 IMU — I2C on Mega pins 20(SDA) 21(SCL)
 // =====================================
 Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28);
+
+// =====================================
+// HUSKYLENS — SoftwareSerial on pins 12(RX), 13(TX)
+// Mega pin 12 -> HuskyLens TX
+// Mega pin 13 -> HuskyLens RX
+// (Swap the two pin numbers below if your wiring is reversed)
+// =====================================
+SoftwareSerial mySerial(12, 13); // RX, TX
+HUSKYLENS huskylens;
+bool objectDetected = false;   // debounced/filtered result — use this everywhere else
+
+// ----- Persistence filter (debounce) -----
+// Requires this many CONSECUTIVE frames in agreement
+// before objectDetected actually flips, so a single
+// noisy/dropped HuskyLens frame can't cause a flicker.
+const int DETECTION_FILTER_COUNT = 10; // tune: higher = steadier but slower to react
+int detectionStreak   = 0;
+int noDetectionStreak = 0;
 
 // =====================================
 // MOTOR PINS
@@ -22,11 +42,6 @@ const int wfr_pwm_pin = 6;
 const int wfl_pwm_pin = 7;
 const int wrr_pwm_pin = 5;
 const int wrl_pwm_pin = 4;
-
-// =====================================
-// PROXIMITY SENSOR
-// =====================================
-const int proxPin = 33;
 
 // =====================================
 // SERVOS — pins 8 and 9
@@ -113,6 +128,65 @@ void readIMU()
 }
 
 // =====================================
+// READ HUSKYLENS — updates objectDetected
+// Raw per-frame result is passed through a
+// persistence filter (see DETECTION_FILTER_COUNT)
+// before objectDetected is allowed to change,
+// so single noisy/dropped frames don't flicker it
+// =====================================
+void readHuskylens()
+{
+  bool rawDetected = false;
+
+  if (huskylens.request())
+  {
+    if (huskylens.isLearned() && huskylens.available())
+    {
+      rawDetected = true;
+
+      while (huskylens.available())
+      {
+        HUSKYLENSResult result = huskylens.read();
+        if (result.command == COMMAND_RETURN_BLOCK)
+        {
+          Serial.print(F("HuskyLens Block: ID="));
+          Serial.print(result.ID);
+          Serial.print(F(" xCenter="));
+          Serial.print(result.xCenter);
+          Serial.print(F(" yCenter="));
+          Serial.println(result.yCenter);
+        }
+        else if (result.command == COMMAND_RETURN_ARROW)
+        {
+          Serial.print(F("HuskyLens Arrow: ID="));
+          Serial.println(result.ID);
+        }
+      }
+    }
+  }
+
+  // ----- Persistence filter (debounce) -----
+  if (rawDetected)
+  {
+    detectionStreak++;
+    noDetectionStreak = 0;
+    if (detectionStreak >= DETECTION_FILTER_COUNT)
+    {
+      objectDetected = true;
+    }
+  }
+  else
+  {
+    noDetectionStreak++;
+    detectionStreak = 0;
+    if (noDetectionStreak >= DETECTION_FILTER_COUNT)
+    {
+      objectDetected = false;
+    }
+  }
+}
+
+// =====================================
 // HEADING ERROR (handles wraparound)
 // =====================================
 float headingError()
@@ -151,6 +225,17 @@ void setup()
   delay(1000);
   Serial.println("BNO055 ready");
 
+  // Init HuskyLens over SoftwareSerial (pins 12=RX, 13=TX)
+  mySerial.begin(9600);
+  while (!huskylens.begin(mySerial))
+  {
+    Serial.println(F("HuskyLens begin failed!"));
+    Serial.println(F("1.Recheck the \"Protocol Type\" in HuskyLens (General Settings>>Protocol Type>>Serial 9600)"));
+    Serial.println(F("2.Recheck the wiring (HuskyLens TX -> Mega pin 12, HuskyLens RX -> Mega pin 13)."));
+    delay(100);
+  }
+  Serial.println("HuskyLens ready");
+
   pinMode(wfr_dir_pin, OUTPUT);
   pinMode(wfl_dir_pin, OUTPUT);
   pinMode(wrr_dir_pin, OUTPUT);
@@ -170,8 +255,6 @@ void setup()
   // pinMode(gripDirPin, OUTPUT);
   // pinMode(gripPwmPin, OUTPUT);
   // analogWrite(gripPwmPin, 0);
-
-  pinMode(proxPin, INPUT);
 
   pinMode(outputA,  INPUT_PULLUP);
   pinMode(outputB,  INPUT_PULLUP);
@@ -197,6 +280,7 @@ void setup()
 void loop()
 {
   readIMU();
+  readHuskylens();
 
   if (!headingInitialized)
   {
@@ -219,6 +303,19 @@ void loop()
   Serial.print(" STATE="); Serial.println(state);
 
   // =====================================
+  // HOLD SERVOS STEADY UNTIL AN OBJECT
+  // IS ACTUALLY FOUND (states 0,1,2)
+  // Re-writing every loop instead of just
+  // once in setup() stops them drifting/
+  // flickering from noise (e.g. SoftwareSerial)
+  // =====================================
+  if (state < 3 && !objectDetected)
+  {
+    gripperServo.write(90);
+    rotateServo.write(0);
+  }
+
+  // =====================================
   // STATE 0 — STRAFE LEFT
   // Heading locked at 0°
   // =====================================
@@ -238,14 +335,14 @@ void loop()
   }
 
   // =====================================
-  // STATE 1 — MOVE FORWARD + CHECK PROX
+  // STATE 1 — MOVE FORWARD + CHECK HUSKYLENS
   // Heading locked at 0°
-  // If prox LOW  → State 3 (close gripper)
+  // If object detected → State 3 (close gripper)
   // If steps done → State 2 (forward scan)
   // =====================================
   else if (state == 1)
   {
-    if (digitalRead(proxPin) == LOW)
+    if (objectDetected)
     {
       stopRobot();
       Serial.println("SPEARHEAD FOUND (backward pass)");
@@ -266,14 +363,14 @@ void loop()
   }
 
   // =====================================
-  // STATE 2 — MOVE BACKWARD + CHECK PROX
+  // STATE 2 — MOVE BACKWARD + CHECK HUSKYLENS
   // Heading locked at 0°
-  // If prox LOW  → State 3 (close gripper)
+  // If object detected → State 3 (close gripper)
   // If steps done → State 8 (not found)
   // =====================================
   else if (state == 2)
   {
-    if (digitalRead(proxPin) == LOW)
+    if (objectDetected)
     {
       stopRobot();
       Serial.println("SPEARHEAD FOUND (forward pass)");

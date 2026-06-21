@@ -1,9 +1,13 @@
-#include <Arduino.h>
 #include <Servo.h>
 #include <Wire.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BNO055.h>
 #include <utility/imumaths.h>
+#include "HUSKYLENS.h"
+#define mySerial Serial3
+
+HUSKYLENS huskylens;
+
 
 // =====================================
 // BNO055 IMU — I2C on Mega pins 20(SDA) 21(SCL)
@@ -26,16 +30,18 @@ const int wrl_pwm_pin = 4;
 // =====================================
 // PROXIMITY SENSOR
 // =====================================
-const int proxPin = 33;
+// const int proxPin = 33;
 
 // =====================================
 // SERVOS — pins 8 and 9
 // =====================================
-Servo gripperServo;
+//Servo gripperServo;
 Servo rotateServo;
 
-const int gripperServoPin = 10;
+// const int gripperServoPin = 10;
 const int rotateServoPin  = 9;
+
+const int pneumaticPin = 10;
 
 unsigned long releaseStartTime = 0;
 bool timerStarted = false;
@@ -73,9 +79,9 @@ volatile long counter3 = 0;   // RL
 // =====================================
 // DISTANCES (TUNE THESE)
 // =====================================
-long leftCounts     = 730;
+long leftCounts     = 650;
 long forwardCounts  = 1500; 
-long diagonalCounts = 700;
+long diagonalCounts = 650;
 long turn90Counts   = 600;
 
 // =====================================
@@ -141,7 +147,7 @@ void setup()
 {
   Serial.begin(115200);
 
-  // Init BNO055
+  //Init BNO055
   if (!bno.begin())
   {
     Serial.println("BNO055 NOT FOUND — check wiring!");
@@ -164,14 +170,19 @@ void setup()
   rotateServo.attach(rotateServoPin);
   rotateServo.write(0);
 
-  gripperServo.attach(gripperServoPin);
-  gripperServo.write(90);
-  
-  // pinMode(gripDirPin, OUTPUT);
-  // pinMode(gripPwmPin, OUTPUT);
-  // analogWrite(gripPwmPin, 0);
+  // gripperServo.attach(gripperServoPin);
+  // gripperServo.write(90);
 
-  pinMode(proxPin, INPUT);
+  pinMode(pneumaticPin, OUTPUT);
+  digitalWrite(pneumaticPin, LOW);   // initially OFF
+
+  // delay(1000);
+
+  // rotateServo.detach();
+  // gripperServo.detach();
+   
+
+  // pinMode(proxPin, INPUT);
 
   pinMode(outputA,  INPUT_PULLUP);
   pinMode(outputB,  INPUT_PULLUP);
@@ -186,6 +197,21 @@ void setup()
   attachInterrupt(digitalPinToInterrupt(outputA1), readEncoderA1, RISING);
   attachInterrupt(digitalPinToInterrupt(outputA2), readEncoderA2, RISING);
   attachInterrupt(digitalPinToInterrupt(outputA3), readEncoderA3, RISING);
+
+
+    // =============================
+  // HUSKYLENS INIT
+  // =============================
+  mySerial.begin(9600);
+
+  while (!huskylens.begin(mySerial))
+  {
+      Serial.println("HUSKYLENS FAILED");
+      delay(100);
+  }
+
+  Serial.println("HUSKYLENS READY");
+
 
   delay(2000);
   resetEncoders();
@@ -238,23 +264,23 @@ void loop()
   }
 
   // =====================================
-  // STATE 1 — MOVE FORWARD + CHECK PROX
+  // STATE 1 — MOVE FORWARD + CHECK HUSKY
   // Heading locked at 0°
   // If prox LOW  → State 3 (close gripper)
   // If steps done → State 2 (forward scan)
   // =====================================
   else if (state == 1)
   {
-    if (digitalRead(proxPin) == LOW)
+    if (spearheadDetected())
     {
       stopRobot();
-      Serial.println("SPEARHEAD FOUND (backward pass)");
+      Serial.println("SPEARHEAD FOUND");
       resetEncoders();
       state = 3;
     }
     else if (avgCounts < forwardCounts)
     {
-      moveForward(50);
+      moveForward(40);
     }
     else
     {
@@ -273,10 +299,10 @@ void loop()
   // =====================================
   else if (state == 2)
   {
-    if (digitalRead(proxPin) == LOW)
+      if (spearheadDetected())
     {
       stopRobot();
-      Serial.println("SPEARHEAD FOUND (forward pass)");
+      Serial.println("SPEARHEAD FOUND");
       resetEncoders();
       state = 3;
     }
@@ -299,13 +325,13 @@ void loop()
   {
     stopRobot();
     delay(1000);
-    gripperServo.write(0);
-    Serial.println("GRIPPER CLOSED");
-    delay(1000);
+    // gripperServo.write(0);
+    // Serial.println("GRIPPER CLOSED");
+    // delay(1000);
 
-    // closeGripper();
-    // delay(400);   // tune experimentally
-    // stopGripper();
+    digitalWrite(pneumaticPin, HIGH);
+    Serial.println("PNEUMATIC ON");
+    delay(500);   // adjust as needed
 
     state = 4;
   }
@@ -315,7 +341,7 @@ void loop()
   // =====================================
   else if (state == 4)
   {
-    rotateServo.write(70);
+    rotateServo.write(60);
     Serial.println("ROTATE SERVO TO 90");
     delay(1000);
     resetEncoders();
@@ -372,13 +398,11 @@ void loop()
   {
     if (timerStarted && millis() - releaseStartTime >= 30000)
     {
-      gripperServo.write(100);
-      Serial.println("GRIPPER OPENED");
-
-      // openGripper();
-      // delay(400);   // tune experimentally
-      // stopGripper();
+      // gripperServo.write(100);
       // Serial.println("GRIPPER OPENED");
+
+      digitalWrite(pneumaticPin, LOW);
+      Serial.println("PNEUMATIC OFF");  
 
       state = 8;
     }
@@ -500,13 +524,13 @@ void rotateRight(int pwm)
 // void closeGripper()
 // {
 //   digitalWrite(gripDirPin, HIGH);
-//   analogWrite(gripPwmPin, 150);
+//   analogWrite(gripPwmPin, 255);
 // }
 
 // void openGripper()
 // {
 //   digitalWrite(gripDirPin, LOW);
-//   analogWrite(gripPwmPin, 150);
+//   analogWrite(gripPwmPin, 255);
 // }
 
 // void stopGripper()
@@ -534,6 +558,47 @@ void resetEncoders()
   counter1 = 0;
   counter2 = 0;
   counter3 = 0;
+}
+
+// =====================================
+// HUSKYLENS SPEARHEAD DETECTION
+// =====================================
+bool spearheadDetected()
+{
+    if (!huskylens.request())
+        return false;
+
+    while (huskylens.available())
+    {
+        HUSKYLENSResult result = huskylens.read();
+
+        // Serial.print("X=");
+        // Serial.print(result.xCenter);
+
+        // Serial.print(" Y=");
+        // Serial.print(result.yCenter);
+
+        // Serial.print(" W=");
+        // Serial.print(result.width);
+
+        // Serial.print(" H=");
+        // Serial.print(result.height);
+
+        // Serial.print(" ID=");
+        // Serial.println(result.ID);
+
+        // if(result.xCenter >= 159 && result.xCenter <= 169 &&
+        //    result.yCenter >= 112 && result.yCenter <= 122 &&
+        //    result.width   >= 100 && result.width   <= 112 &&
+        //    result.height  >= 63  && result.height  <= 75)
+        if(result.ID==1)
+        {
+            Serial.println("TARGET REACHED");
+            return true;
+        }
+    }
+
+    return false;
 }
 
 // =====================================

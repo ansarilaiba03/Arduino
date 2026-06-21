@@ -1,4 +1,4 @@
-const int proximityPin = 2;   // Sensor OUT pin connected to Arduino pin 2
+const int proximityPin = 37;   // Sensor OUT pin connected to Arduino pin 2
 
 void setup() {
   pinMode(proximityPin, INPUT);

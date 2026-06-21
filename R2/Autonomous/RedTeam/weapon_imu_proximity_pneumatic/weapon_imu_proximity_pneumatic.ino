@@ -26,29 +26,28 @@ const int wrl_pwm_pin = 4;
 // =====================================
 // PROXIMITY SENSOR
 // =====================================
-const int proxPin = 33;
+const int proxPin = 37;
 
 // =====================================
-// SERVOS — pins 8 and 9
+// SERVO — rotate 
 // =====================================
-Servo gripperServo;
 Servo rotateServo;
+const int rotateServoPin = 9;
 
-const int gripperServoPin = 10;
-const int rotateServoPin  = 9;
+// =====================================
+// PNEUMATIC GRIPPER
+// =====================================
+const int pneumaticPin = 10;
 
 unsigned long releaseStartTime = 0;
 bool timerStarted = false;
 
-// const int gripDirPin = 40;
-// const int gripPwmPin = 10;
-
 // =====================================
 // ENCODERS
-// RR  — pin 18 (interrupt)
-// FL  — pin 19 (interrupt)
-// FR  — pin 2  (interrupt, moved from 20 — 20 now used by I2C SDA)
-// RL  — pin 3  (interrupt, moved from 21 — 21 now used by I2C SCL)
+// RR  — pin 18 
+// FL  — pin 19 
+// FR  — pin 2  
+// RL  — pin 3  
 // =====================================
 const int outputA  = 18;  // RR interrupt
 const int outputB  = 48;  // RR direction
@@ -56,10 +55,10 @@ const int outputB  = 48;  // RR direction
 const int outputA1 = 19;  // FL interrupt
 const int outputB1 = 31;  // FL direction
 
-const int outputA2 = 2;   // FR interrupt (moved from 20)  
+const int outputA2 = 2;   // FR interrupt
 const int outputB2 = 30;  // FR direction
 
-const int outputA3 = 3;   // RL interrupt (moved from 21)
+const int outputA3 = 3;   // RL interrupt
 const int outputB3 = 22;  // RL direction
 
 // =====================================
@@ -73,10 +72,11 @@ volatile long counter3 = 0;   // RL
 // =====================================
 // DISTANCES (TUNE THESE)
 // =====================================
-long leftCounts     = 730;
-long forwardCounts  = 1500; 
-long diagonalCounts = 700;
-long turn90Counts   = 600;
+long leftCounts        = 650;
+long blindForwardCounts = 490;   
+long forwardCounts     = 1500;
+long diagonalCounts    = 650;
+long turn90Counts      = 500;
 
 // =====================================
 // IMU / HEADING
@@ -85,14 +85,24 @@ float currentYaw         = 0.0;
 float desiredHeading     = 0.0;
 bool  headingInitialized = false;
 
-// P gain — tune this (start at 0.8)
+// P gain 
 const float kP_heading   = 5.5;
 const int   maxCorrection = 30;
 
 // =====================================
 // STATE MACHINE
+// state 0 — strafe left
+// state 1 — NEW: move forward blind (proximity ignored) for blindForwardCounts
+// state 2 — move forward + check proximity
+// state 3 — move backward + check proximity
+// state 4 — pneumatic ON (grip)
+// state 5 — rotate spearhead servo
+// state 6 — strafe right
+// state 7 — rotate 90
+// state 8 — wait then pneumatic OFF (release)
+// state 9 — stop (finished)
 // =====================================
-int state = 0;
+int state = 4;
 
 // =====================================
 // READ IMU — quaternion yaw from BNO055
@@ -162,14 +172,10 @@ void setup()
   pinMode(wrl_pwm_pin, OUTPUT);
 
   rotateServo.attach(rotateServoPin);
-  rotateServo.write(0);
+  rotateServo.write(90);
 
-  gripperServo.attach(gripperServoPin);
-  gripperServo.write(90);
-  
-  // pinMode(gripDirPin, OUTPUT);
-  // pinMode(gripPwmPin, OUTPUT);
-  // analogWrite(gripPwmPin, 0);
+  pinMode(pneumaticPin, OUTPUT);
+  digitalWrite(pneumaticPin, LOW);   // initially OFF
 
   pinMode(proxPin, INPUT);
 
@@ -238,38 +244,30 @@ void loop()
   }
 
   // =====================================
-  // STATE 1 — MOVE FORWARD + CHECK PROX
-  // Heading locked at 0°
-  // If prox LOW  → State 3 (close gripper)
-  // If steps done → State 2 (forward scan)
+  // STATE 1 — BLIND FORWARD POSE
+  // Move forward for blindForwardCounts.
+  // Proximity sensor is ignored here.
   // =====================================
   else if (state == 1)
   {
-    if (digitalRead(proxPin) == LOW)
+    if (avgCounts < blindForwardCounts)
     {
-      stopRobot();
-      Serial.println("SPEARHEAD FOUND (backward pass)");
-      resetEncoders();
-      state = 3;
-    }
-    else if (avgCounts < forwardCounts)
-    {
-      moveForward(50);
+      moveForward(40);
     }
     else
     {
       stopRobot();
       resetEncoders();
       delay(500);
-      state = 8;
+      state = 2;
     }
   }
 
   // =====================================
-  // STATE 2 — MOVE BACKWARD + CHECK PROX
+  // STATE 2 — MOVE FORWARD + CHECK PROX
   // Heading locked at 0°
-  // If prox LOW  → State 3 (close gripper)
-  // If steps done → State 8 (not found)
+  // If prox LOW  → State 4 (pneumatic grip)
+  // If steps done → State 3 (move backward scan)
   // =====================================
   else if (state == 2)
   {
@@ -278,7 +276,35 @@ void loop()
       stopRobot();
       Serial.println("SPEARHEAD FOUND (forward pass)");
       resetEncoders();
+      state = 4;
+    }
+    else if (avgCounts < forwardCounts)
+    {
+      moveForward(40);
+    }
+    else
+    {
+      stopRobot();
+      resetEncoders();
+      delay(500);
       state = 3;
+    }
+  }
+
+  // =====================================
+  // STATE 3 — MOVE BACKWARD + CHECK PROX
+  // Heading locked at 0°
+  // If prox LOW  → State 4 (pneumatic grip)
+  // If steps done → State 9 (not found, stop)
+  // =====================================
+  else if (state == 3)
+  {
+    if (digitalRead(proxPin) == LOW)
+    {
+      stopRobot();
+      Serial.println("SPEARHEAD FOUND (backward pass)");
+      resetEncoders();
+      state = 4;
     }
     else if (avgCounts < forwardCounts)
     {
@@ -288,45 +314,42 @@ void loop()
     {
       stopRobot();
       Serial.println("SPEARHEAD NOT FOUND");
-      state = 8;
+      state = 9;
     }
   }
 
   // =====================================
-  // STATE 3 — CLOSE GRIPPER
-  // =====================================
-  else if (state == 3)
-  {
-    stopRobot();
-    delay(1000);
-    gripperServo.write(0);
-    Serial.println("GRIPPER CLOSED");
-    delay(1000);
-
-    // closeGripper();
-    // delay(400);   // tune experimentally
-    // stopGripper();
-
-    state = 4;
-  }
-
-  // =====================================
-  // STATE 4 — ROTATE SPEARHEAD SERVO
+  // STATE 4 — PNEUMATIC GRIP ON
   // =====================================
   else if (state == 4)
   {
-    rotateServo.write(70);
-    Serial.println("ROTATE SERVO TO 90");
+    stopRobot();
     delay(1000);
-    resetEncoders();
+
+    digitalWrite(pneumaticPin, HIGH);
+    Serial.println("PNEUMATIC ON");
+    delay(500);   // adjust as needed
+
     state = 5;
   }
 
   // =====================================
-  // STATE 5 — STRAFE Right
-  // Heading locked at 0°
+  // STATE 5 — ROTATE SPEARHEAD SERVO
   // =====================================
   else if (state == 5)
+  {
+    rotateServo.write(0);
+    Serial.println("ROTATE SERVO TO 70");
+    delay(1000);
+    resetEncoders();
+    state = 9;
+  }
+
+  // =====================================
+  // STATE 6 — STRAFE RIGHT
+  // Heading locked at 0°
+  // =====================================
+  else if (state == 6)
   {
     long strafeCounts =
       (abs(counter) + abs(counter1) + abs(counter2) + abs(counter3)) / 4;
@@ -340,16 +363,16 @@ void loop()
       stopRobot();
       resetEncoders();
       delay(500);
-      Serial.println("STRAFE LEFT COMPLETE");
-      state = 6;
+      Serial.println("STRAFE RIGHT COMPLETE");
+      state = 7;
     }
   }
 
   // =====================================
-  // STATE 6 — ROTATE 90°
+  // STATE 7 — ROTATE 90°
   // Heading lock DISABLED — pure rotation
   // =====================================
-  else if (state == 6)
+  else if (state == 7)
   {
     if (avgCounts < turn90Counts)
     {
@@ -361,33 +384,28 @@ void loop()
       releaseStartTime = millis();
       timerStarted     = true;
       Serial.println("TURN 90 COMPLETE");
-      state = 7;
-    }
-  }
-
-  // =====================================
-  // STATE 7 — WAIT 30s THEN OPEN GRIPPER
-  // =====================================
-  else if (state == 7)
-  {
-    if (timerStarted && millis() - releaseStartTime >= 30000)
-    {
-      gripperServo.write(100);
-      Serial.println("GRIPPER OPENED");
-
-      // openGripper();
-      // delay(400);   // tune experimentally
-      // stopGripper();
-      // Serial.println("GRIPPER OPENED");
-
       state = 8;
     }
   }
 
   // =====================================
-  // STATE 8 — STOP (FINISHED)
+  // STATE 8 — WAIT 30s THEN PNEUMATIC OFF
   // =====================================
   else if (state == 8)
+  {
+    if (timerStarted && millis() - releaseStartTime >= 30000)
+    {
+      digitalWrite(pneumaticPin, LOW);
+      Serial.println("PNEUMATIC OFF");
+
+      state = 9;
+    }
+  }
+
+  // =====================================
+  // STATE 9 — STOP (FINISHED)
+  // =====================================
+  else if (state == 9)
   {
     stopRobot();
   }
@@ -460,15 +478,15 @@ void strafeLeft(int pwm)
 }
 
 // =====================================
-// STRAFE Right — P heading lock
+// STRAFE RIGHT — P heading lock
 // Front pair vs rear pair correction
 // Positive err (drifted CW) → reduce front, boost rear
 // =====================================
 void strafeRight(int pwm)
 {
   int corr     = getCorrection();
-  int pwmRear = constrain(pwm - corr, 0, 255);
-  int pwmFront  = constrain(pwm + corr, 0, 255);
+  int pwmRear  = constrain(pwm - corr, 0, 255);
+  int pwmFront = constrain(pwm + corr, 0, 255);
 
   digitalWrite(wfl_dir_pin, LOW);
   digitalWrite(wrr_dir_pin, LOW);
@@ -496,23 +514,6 @@ void rotateRight(int pwm)
   analogWrite(wfl_pwm_pin, pwm);
   analogWrite(wrl_pwm_pin, pwm);
 }
-
-// void closeGripper()
-// {
-//   digitalWrite(gripDirPin, HIGH);
-//   analogWrite(gripPwmPin, 150);
-// }
-
-// void openGripper()
-// {
-//   digitalWrite(gripDirPin, LOW);
-//   analogWrite(gripPwmPin, 150);
-// }
-
-// void stopGripper()
-// {
-//   analogWrite(gripPwmPin, 0);
-// }
 
 // =====================================
 // STOP

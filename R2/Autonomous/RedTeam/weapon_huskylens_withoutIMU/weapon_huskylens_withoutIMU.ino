@@ -1,9 +1,13 @@
-#include <Arduino.h>
 #include <Servo.h>
 #include <Wire.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BNO055.h>
 #include <utility/imumaths.h>
+#include "HUSKYLENS.h"
+#define mySerial Serial3
+
+HUSKYLENS huskylens;
+
 
 // =====================================
 // BNO055 IMU — I2C on Mega pins 20(SDA) 21(SCL)
@@ -26,16 +30,16 @@ const int wrl_pwm_pin = 4;
 // =====================================
 // PROXIMITY SENSOR
 // =====================================
-const int proxPin = 33;
+// const int proxPin = 33;
 
 // =====================================
-// SERVOS — pins 8 and 9
+// SERVOS 
 // =====================================
 Servo gripperServo;
 Servo rotateServo;
 
-const int gripperServoPin = 10;
-const int rotateServoPin  = 9;
+const int gripperServoPin = 9;
+const int rotateServoPin  = 10;
 
 unsigned long releaseStartTime = 0;
 bool timerStarted = false;
@@ -71,7 +75,7 @@ volatile long counter2 = 0;   // FR
 volatile long counter3 = 0;   // RL
 
 // =====================================
-// DISTANCES (TUNE THESE)
+// DISTANCES 
 // =====================================
 long leftCounts     = 730;
 long forwardCounts  = 1500; 
@@ -141,7 +145,7 @@ void setup()
 {
   Serial.begin(115200);
 
-  // Init BNO055
+  //Init BNO055
   if (!bno.begin())
   {
     Serial.println("BNO055 NOT FOUND — check wiring!");
@@ -166,12 +170,18 @@ void setup()
 
   gripperServo.attach(gripperServoPin);
   gripperServo.write(90);
+
+  // delay(1000);
+
+  // rotateServo.detach();
+  // gripperServo.detach();
   
   // pinMode(gripDirPin, OUTPUT);
   // pinMode(gripPwmPin, OUTPUT);
+
   // analogWrite(gripPwmPin, 0);
 
-  pinMode(proxPin, INPUT);
+  // pinMode(proxPin, INPUT);
 
   pinMode(outputA,  INPUT_PULLUP);
   pinMode(outputB,  INPUT_PULLUP);
@@ -186,6 +196,21 @@ void setup()
   attachInterrupt(digitalPinToInterrupt(outputA1), readEncoderA1, RISING);
   attachInterrupt(digitalPinToInterrupt(outputA2), readEncoderA2, RISING);
   attachInterrupt(digitalPinToInterrupt(outputA3), readEncoderA3, RISING);
+
+
+    // =============================
+  // HUSKYLENS INIT
+  // =============================
+  mySerial.begin(9600);
+
+  while (!huskylens.begin(mySerial))
+  {
+      Serial.println("HUSKYLENS FAILED");
+      delay(100);
+  }
+
+  Serial.println("HUSKYLENS READY");
+
 
   delay(2000);
   resetEncoders();
@@ -245,16 +270,16 @@ void loop()
   // =====================================
   else if (state == 1)
   {
-    if (digitalRead(proxPin) == LOW)
+    if (spearheadDetected())
     {
       stopRobot();
-      Serial.println("SPEARHEAD FOUND (backward pass)");
+      Serial.println("SPEARHEAD FOUND");
       resetEncoders();
       state = 3;
     }
     else if (avgCounts < forwardCounts)
     {
-      moveForward(50);
+      moveForward(40);
     }
     else
     {
@@ -273,11 +298,11 @@ void loop()
   // =====================================
   else if (state == 2)
   {
-    if (digitalRead(proxPin) == LOW)
+      if (spearheadDetected())
     {
       stopRobot();
-      Serial.println("SPEARHEAD FOUND (forward pass)");
-      resetEncoders();
+      Serial.println("SPEARHEAD FOUND");
+      //resetEncoders();
       state = 3;
     }
     else if (avgCounts < forwardCounts)
@@ -306,6 +331,8 @@ void loop()
     // closeGripper();
     // delay(400);   // tune experimentally
     // stopGripper();
+    // Serial.println("GRIPPER CLOSED");
+    // delay(500);
 
     state = 4;
   }
@@ -315,7 +342,7 @@ void loop()
   // =====================================
   else if (state == 4)
   {
-    rotateServo.write(70);
+    rotateServo.write(90);
     Serial.println("ROTATE SERVO TO 90");
     delay(1000);
     resetEncoders();
@@ -534,6 +561,47 @@ void resetEncoders()
   counter1 = 0;
   counter2 = 0;
   counter3 = 0;
+}
+
+// =====================================
+// HUSKYLENS SPEARHEAD DETECTION
+// =====================================
+bool spearheadDetected()
+{
+    if (!huskylens.request())
+        return false;
+
+    while (huskylens.available())
+    {
+        HUSKYLENSResult result = huskylens.read();
+
+        // Serial.print("X=");
+        // Serial.print(result.xCenter);
+
+        // Serial.print(" Y=");
+        // Serial.print(result.yCenter);
+
+        // Serial.print(" W=");
+        // Serial.print(result.width);
+
+        // Serial.print(" H=");
+        // Serial.print(result.height);
+
+        // Serial.print(" ID=");
+        // Serial.println(result.ID);
+
+        // if(result.xCenter >= 159 && result.xCenter <= 169 &&
+        //    result.yCenter >= 112 && result.yCenter <= 122 &&
+        //    result.width   >= 100 && result.width   <= 112 &&
+        //    result.height  >= 63  && result.height  <= 75)
+        if(result.ID==1)
+        {
+            Serial.println("TARGET REACHED");
+            return true;
+        }
+    }
+
+    return false;
 }
 
 // =====================================
