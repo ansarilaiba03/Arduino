@@ -26,7 +26,7 @@ const int wrl_pwm_pin = 4;
 // =====================================
 // PROXIMITY SENSOR
 // =====================================
-const int proxPin = 37;
+const int proxPin = 12;
 
 // =====================================
 // SERVO — rotate 
@@ -72,11 +72,12 @@ volatile long counter3 = 0;   // RL
 // =====================================
 // DISTANCES (TUNE THESE)
 // =====================================
-long leftCounts        = 650;
+long leftCounts1        = 500;
+long leftCounts2        = 200;
 long blindForwardCounts = 490;   
 long forwardCounts     = 1500;
 long diagonalCounts    = 650;
-long turn90Counts      = 500;
+long turn90Counts      = 550;
 
 // =====================================
 // IMU / HEADING
@@ -86,7 +87,7 @@ float desiredHeading     = 0.0;
 bool  headingInitialized = false;
 
 // P gain 
-const float kP_heading   = 5.5;
+const float kP_heading   = 7.5;
 const int   maxCorrection = 30;
 
 // =====================================
@@ -102,7 +103,7 @@ const int   maxCorrection = 30;
 // state 8 — wait then pneumatic OFF (release)
 // state 9 — stop (finished)
 // =====================================
-int state = 4;
+int state = 0;
 
 // =====================================
 // READ IMU — quaternion yaw from BNO055
@@ -230,9 +231,9 @@ void loop()
   // =====================================
   if (state == 0)
   {
-    if (avgCounts < leftCounts)
+    if (avgCounts < leftCounts1)
     {
-      strafeLeft(80);
+      strafeLeft(50);
     }
     else
     {
@@ -276,7 +277,7 @@ void loop()
       stopRobot();
       Serial.println("SPEARHEAD FOUND (forward pass)");
       resetEncoders();
-      state = 4;
+      state = 3.5;
     }
     else if (avgCounts < forwardCounts)
     {
@@ -304,7 +305,7 @@ void loop()
       stopRobot();
       Serial.println("SPEARHEAD FOUND (backward pass)");
       resetEncoders();
-      state = 4;
+      state = 3.5;
     }
     else if (avgCounts < forwardCounts)
     {
@@ -316,6 +317,22 @@ void loop()
       Serial.println("SPEARHEAD NOT FOUND");
       state = 9;
     }
+  }
+
+// STATE 3.5
+  else if (state == 3.5){
+    if (avgCounts < leftCounts2)
+    {
+      strafeLeft(50);
+    }
+    else
+    {
+      stopRobot();
+      resetEncoders();
+      delay(500);
+      state = 4;
+    }
+
   }
 
   // =====================================
@@ -342,7 +359,7 @@ void loop()
     Serial.println("ROTATE SERVO TO 70");
     delay(1000);
     resetEncoders();
-    state = 9;
+    state = 6;
   }
 
   // =====================================
@@ -356,7 +373,7 @@ void loop()
 
     if (strafeCounts < diagonalCounts)
     {
-      strafeRight(80);
+      strafeRight(50);
     }
     else
     {
@@ -376,7 +393,7 @@ void loop()
   {
     if (avgCounts < turn90Counts)
     {
-      rotateRight(80);
+      rotateRight(50);
     }
     else
     {
