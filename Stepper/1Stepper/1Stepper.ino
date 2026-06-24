@@ -4,7 +4,7 @@
 
 // Timing variables
 unsigned long previousMillis = 0;
-const unsigned long stepInterval = 2; // milliseconds between steps
+const unsigned long stepInterval = 1; // milliseconds between steps
 
 // Step state 
 bool stepState = false;  // LOW or HIGH

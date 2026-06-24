@@ -1,5 +1,4 @@
 #include <Arduino.h>
-#include <Servo.h>
 #include <Wire.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BNO055.h>
@@ -29,10 +28,17 @@ const int wrl_pwm_pin = 4;
 const int proxPin = 12;
 
 // =====================================
-// SERVO — rotate
+// STEPPER MOTOR 
+// (90/360)*200 = 50 steps
 // =====================================
-Servo rotateServo;
-const int rotateServoPin = 9;
+#define STEP_PIN 17
+#define DIR_PIN  16
+
+unsigned long stepPrevMillis       = 0;
+const unsigned long stepInterval   = 2;   // ms per half-step toggle
+bool   stepPinState                = false;
+int    stepCount                   = 0;
+const int STEPS_90                 = 50;  // 90° worth of steps
 
 // =====================================
 // PNEUMATIC GRIPPER
@@ -43,7 +49,7 @@ unsigned long releaseStartTime = 0;
 bool timerStarted    = false;
 
 // =====================================
-// POSITION HOLD (STATE 8)
+// POSITION HOLD (STATE 13)
 // =====================================
 bool holdInitialized = false;
 long holdRR  = 0;
@@ -51,27 +57,27 @@ long holdFL  = 0;
 long holdFR  = 0;
 long holdRL  = 0;
 
-const float kP_pos     = 0.8;   // tune this for stiffness
+const float kP_pos     = 0.8;   //encoder counts = 0 
 const int   maxHoldPWM = 80;
 
 // =====================================
 // ENCODERS
 // RR  — pin 18
 // FL  — pin 19
-// FR  — pin 2  (moved from 20 — 20 used by I2C SDA)
-// RL  — pin 3  (moved from 21 — 21 used by I2C SCL)
+// FR  — pin 2
+// RL  — pin 3
 // =====================================
-const int outputA  = 18;  // RR interrupt
-const int outputB  = 48;  // RR direction
+const int outputA  = 18;
+const int outputB  = 48;
 
-const int outputA1 = 19;  // FL interrupt
-const int outputB1 = 31;  // FL direction
+const int outputA1 = 19;
+const int outputB1 = 31;
 
-const int outputA2 = 2;   // FR interrupt
-const int outputB2 = 30;  // FR direction
+const int outputA2 = 2;
+const int outputB2 = 30;
 
-const int outputA3 = 3;   // RL interrupt
-const int outputB3 = 22;  // RL direction
+const int outputA3 = 3;
+const int outputB3 = 22;
 
 // =====================================
 // COUNTERS
@@ -84,12 +90,12 @@ volatile long counter3 = 0;   // RL
 // =====================================
 // DISTANCES (TUNE THESE)
 // =====================================
-long leftCounts1         = 500;
+long leftCounts1         = 550;
 long leftCounts2         = 200;
-long blindForwardCounts  = 490;
+long blindForwardCounts  = 420;
 long forwardCounts       = 1500;
 long diagonalCounts      = 650;
-long turn90Counts        = 550;
+long turn90Counts        = 600;
 
 // =====================================
 // IMU / HEADING
@@ -98,22 +104,25 @@ float currentYaw         = 0.0;
 float desiredHeading     = 0.0;
 bool  headingInitialized = false;
 
-const float kP_heading   = 7.5;
+const float kP_heading   = 12.0;
 const int   maxCorrection = 30;
 
 // =====================================
 // STATE MACHINE
-// state 0  — strafe left (leftCounts1)
-// state 1  — blind forward (blindForwardCounts, prox ignored)
-// state 2  — move forward + check prox
-// state 3  — move backward + check prox
-// state 10 — small strafe left (leftCounts2) after spearhead found
-// state 4  — pneumatic ON, re-check prox; if lost → undo → state 2
-// state 5  — rotate servo to 0°, re-check prox; if lost → undo → state 2
-// state 6  — strafe right
-// state 7  — rotate 90°
-// state 8  — wait 30s with encoder position hold, then pneumatic OFF
-// state 9  — stop (finished)
+//    — strafe left (leftCounts1)
+//    — blind forward (blindForwardCounts, prox ignored)
+//    — move forward + check prox
+//    — move backward + check prox
+//   — small strafe left (leftCounts2) after spearhead found
+//    — pneumatic ON, re-check prox; lost → undo → state 2
+//    — kick off stepper FORWARD (non-blocking) → state 7
+//   — tick stepper forward; done → check prox → state 11 or state 8
+//   — kick off stepper BACKWARD (undo) → state 9
+//   — tick stepper backward; done → pneumatic OFF → state 2
+//    — strafe right
+//    — rotate 90°
+//    — wait 30s with encoder position hold, then pneumatic OFF
+//    — stop (finished)
 // =====================================
 int state = 0;
 
@@ -131,14 +140,15 @@ void  rotateRight(int pwm);
 void  stopRobot();
 void  resetEncoders();
 void  holdPosition();
+void  startStepper(bool forward);
+bool  tickStepper();
 
 // =====================================
-// READ IMU — quaternion yaw from BNO055
+// READ IMU
 // =====================================
 void readIMU()
 {
   imu::Quaternion quat = bno.getQuat();
-
   double w = quat.w();
   double x = quat.x();
   double y = quat.y();
@@ -166,8 +176,49 @@ float headingError()
 int getCorrection()
 {
   int corr = (int)(kP_heading * headingError());
-  corr = constrain(corr, -maxCorrection, maxCorrection);
-  return corr;
+  return constrain(corr, -maxCorrection, maxCorrection);
+}
+
+// =====================================
+// STEPPER — start motion
+// forward=true  → DIR HIGH (rotate 90°)
+// forward=false → DIR LOW  (reverse back)
+// =====================================
+void startStepper(bool forward)
+{
+  stepCount    = 0;
+  stepPinState = false;
+  digitalWrite(DIR_PIN,  forward ? HIGH : LOW);
+  digitalWrite(STEP_PIN, LOW);
+  stepPrevMillis = millis();
+  Serial.println(forward ? "STEPPER: moving forward 90°"
+                          : "STEPPER: reversing back 90°");
+}
+
+// =====================================
+// STEPPER — non-blocking tick
+// Call every loop iteration while stepper is active.
+// Returns true when STEPS_90 steps are complete.
+// =====================================
+bool tickStepper()
+{
+  if (stepCount >= STEPS_90)
+  {
+    digitalWrite(STEP_PIN, LOW);   // leave pin LOW when done
+    return true;
+  }
+
+  unsigned long now = millis();
+  if (now - stepPrevMillis >= stepInterval)
+  {
+    stepPrevMillis = now;
+    stepPinState   = !stepPinState;
+    digitalWrite(STEP_PIN, stepPinState);
+
+    if (stepPinState == HIGH)      // rising edge = one full step
+      stepCount++;
+  }
+  return false;
 }
 
 // =====================================
@@ -196,12 +247,17 @@ void setup()
   pinMode(wrr_pwm_pin, OUTPUT);
   pinMode(wrl_pwm_pin, OUTPUT);
 
-  rotateServo.attach(rotateServoPin);
-  rotateServo.write(90);   // resting position
+  // Stepper
+  pinMode(STEP_PIN, OUTPUT);
+  pinMode(DIR_PIN,  OUTPUT);
+  digitalWrite(STEP_PIN, LOW);
+  digitalWrite(DIR_PIN,  HIGH);
 
+  // Pneumatic
   pinMode(pneumaticPin, OUTPUT);
-  digitalWrite(pneumaticPin, LOW);   // initially OFF
+  digitalWrite(pneumaticPin, LOW);
 
+  // Proximity
   pinMode(proxPin, INPUT);
 
   pinMode(outputA,  INPUT_PULLUP);
@@ -256,9 +312,7 @@ void loop()
   if (state == 0)
   {
     if (avgCounts < leftCounts1)
-    {
       strafeLeft(50);
-    }
     else
     {
       stopRobot();
@@ -275,9 +329,7 @@ void loop()
   else if (state == 1)
   {
     if (avgCounts < blindForwardCounts)
-    {
       moveForward(40);
-    }
     else
     {
       stopRobot();
@@ -289,7 +341,7 @@ void loop()
 
   // =====================================
   // STATE 2 — MOVE FORWARD + CHECK PROX
-  // Found  → state 10 (small strafe left)
+  // Found  → state 4 (small strafe left)
   // Done   → state 3 (backward scan)
   // =====================================
   else if (state == 2)
@@ -299,12 +351,10 @@ void loop()
       stopRobot();
       Serial.println("SPEARHEAD FOUND (forward pass)");
       resetEncoders();
-      state = 10;
+      state = 4;
     }
     else if (avgCounts < forwardCounts)
-    {
       moveForward(40);
-    }
     else
     {
       stopRobot();
@@ -316,8 +366,8 @@ void loop()
 
   // =====================================
   // STATE 3 — MOVE BACKWARD + CHECK PROX
-  // Found  → state 10 (small strafe left)
-  // Done   → state 9 (not found, stop)
+  // Found  → state 4 (small strafe left)
+  // Done   → state 13  (not found, stop)
   // =====================================
   else if (state == 3)
   {
@@ -326,46 +376,40 @@ void loop()
       stopRobot();
       Serial.println("SPEARHEAD FOUND (backward pass)");
       resetEncoders();
-      state = 10;
+      state = 4;
     }
     else if (avgCounts < forwardCounts)
-    {
       moveBackward(40);
-    }
     else
     {
       stopRobot();
       Serial.println("SPEARHEAD NOT FOUND");
-      state = 9;
+      state = 14;
     }
   }
 
   // =====================================
-  // STATE 10 — SMALL STRAFE LEFT (leftCounts2)
-  // Entered after spearhead detected.
+  // STATE 4 — SMALL STRAFE LEFT (leftCounts2)
   // =====================================
-  else if (state == 10)
+  else if (state == 4)
   {
     if (avgCounts < leftCounts2)
-    {
       strafeLeft(50);
-    }
     else
     {
       stopRobot();
       resetEncoders();
       delay(500);
-      state = 4;
+      state = 5;
     }
   }
 
   // =====================================
-  // STATE 4 — PNEUMATIC GRIP ON
-  // After activating, re-check proximity.
-  // If spearhead still detected  → state 5
-  // If lost                      → undo (pneumatic OFF) → state 2
+  // STATE 5 — PNEUMATIC GRIP ON
+  // Re-check prox after grip.
+  // Lost → pneumatic OFF → state 10 (undo strafe) → state 2
   // =====================================
-  else if (state == 4)
+  else if (state == 5)
   {
     stopRobot();
     delay(1000);
@@ -376,104 +420,156 @@ void loop()
 
     if (digitalRead(proxPin) == LOW)
     {
-      Serial.println("STATE 4: prox confirmed — proceeding to state 5");
-      state = 5;
-    }
-    else
-    {
-      // Lost spearhead — undo and re-search
-      Serial.println("STATE 4: prox lost — PNEUMATIC OFF, returning to state 2");
-      digitalWrite(pneumaticPin, LOW);
-      delay(300);
-      resetEncoders();
-      state = 2;
-    }
-  }
-
-  // =====================================
-  // STATE 5 — ROTATE SPEARHEAD SERVO TO 0°
-  // After rotating, re-check proximity.
-  // If spearhead still detected  → state 6
-  // If lost                      → undo servo → undo pneumatic → state 2
-  // =====================================
-  else if (state == 5)
-  {
-    rotateServo.write(0);
-    Serial.println("ROTATE SERVO TO 0");
-    delay(1000);
-
-    if (digitalRead(proxPin) == LOW)
-    {
       Serial.println("STATE 5: prox confirmed — proceeding to state 6");
-      resetEncoders();
       state = 6;
     }
     else
     {
-      // Lost spearhead — undo servo then undo pneumatic, re-search
-      Serial.println("STATE 5: prox lost — reversing servo and pneumatic, returning to state 2");
-      rotateServo.write(90);
-      Serial.println("SERVO RETURNED TO 90");
-      delay(500);
+      Serial.println("STATE 5: prox lost — PNEUMATIC OFF, undoing strafe (state 10)");
       digitalWrite(pneumaticPin, LOW);
-      Serial.println("PNEUMATIC OFF");
       delay(300);
       resetEncoders();
+      state = 10;
+    }
+  }
+
+  // =====================================
+  // STATE 6 — KICK OFF STEPPER FORWARD
+  // Immediately transitions to state 7
+  // where the non-blocking tick runs.
+  // =====================================
+  else if (state == 6)
+  {
+    stopRobot();
+    startStepper(true);   // DIR HIGH → 90° forward
+    state = 7;
+  }
+
+  // =====================================
+  // STATE 7 — TICK STEPPER FORWARD (non-blocking)
+  // Done → check prox
+  //   Still detected → state 11 (strafe right)
+  //   Lost           → state 8 (reverse stepper)
+  // =====================================
+  else if (state == 7)
+  {
+    bool done = tickStepper();
+
+    if (done)
+    {
+      Serial.println("STEPPER FORWARD DONE");
+      delay(200);   // brief settle
+
+      if (digitalRead(proxPin) == LOW)
+      {
+        Serial.println("STATE 7: prox confirmed — proceeding to state 11");
+        resetEncoders();
+        state = 11;
+      }
+      else
+      {
+        Serial.println("STATE 7: prox lost — reversing stepper");
+        state = 8;
+      }
+    }
+    // While stepper is still moving, other loop tasks run freely.
+  }
+
+  // =====================================
+  // STATE 8 — KICK OFF STEPPER BACKWARD (undo)
+  // Then transitions to state 9.
+  // =====================================
+  else if (state == 8)
+  {
+    startStepper(false);   // DIR LOW → reverse 90° back
+    state = 9;
+  }
+
+  // =====================================
+  // STATE 9 — TICK STEPPER BACKWARD (non-blocking)
+  // Done → pneumatic OFF → state 10 (undo strafe) → state 2
+  // =====================================
+  else if (state == 9)
+  {
+    bool done = tickStepper();
+
+    if (done)
+    {
+      Serial.println("STEPPER REVERSED DONE");
+      delay(200);
+      digitalWrite(pneumaticPin, LOW);
+      Serial.println("PNEUMATIC OFF — undoing strafe (state 10)");
+      delay(300);
+      resetEncoders();
+      state = 10;
+    }
+  }
+
+  // =====================================
+  // STATE 10 — UNDO STATE 4 (strafe right leftCounts2)
+  // Reverses the small strafe left done in state 4.
+  // Then goes to state 2 to re-search.
+  // =====================================
+  else if (state == 10)
+  {
+    if (avgCounts < leftCounts2)
+      strafeRight(50);
+    else
+    {
+      stopRobot();
+      resetEncoders();
+      delay(500);
+      Serial.println("STATE 10: undo strafe done — returning to state 2");
       state = 2;
     }
   }
 
   // =====================================
-  // STATE 6 — STRAFE RIGHT
+  // STATE 11 — STRAFE RIGHT
   // =====================================
-  else if (state == 6)
+  else if (state == 11)
   {
     long strafeCounts =
       (abs(counter) + abs(counter1) + abs(counter2) + abs(counter3)) / 4;
 
     if (strafeCounts < diagonalCounts)
-    {
       strafeRight(50);
-    }
     else
     {
       stopRobot();
       resetEncoders();
       delay(500);
       Serial.println("STRAFE RIGHT COMPLETE");
-      state = 7;
+      state = 12;
     }
   }
 
   // =====================================
-  // STATE 7 — ROTATE 90°
+  // STATE 12 — ROTATE 90°
   // Heading lock DISABLED — pure rotation
   // =====================================
-  else if (state == 7)
+  else if (state == 12)
   {
     if (avgCounts < turn90Counts)
-    {
       rotateRight(50);
-    }
     else
     {
       stopRobot();
       releaseStartTime = millis();
       timerStarted     = true;
-      holdInitialized  = false;   // reset so hold captures position fresh
+      holdInitialized  = false;   // reset so hold captures fresh position
       Serial.println("TURN 90 COMPLETE");
-      state = 8;
+      state = 13;
     }
   }
 
   // =====================================
-  // STATE 8 — WAIT 30s WITH ENCODER POSITION HOLD
+  // STATE 13 — WAIT 30s WITH ENCODER POSITION HOLD
   // Bot actively resists being pushed.
-  // After 30s: pneumatic OFF → state 9.
+  // After 30s: pneumatic OFF → state 14.
   // =====================================
-  else if (state == 8)
+  else if (state == 13)
   {
-    // Capture hold targets once on entry
     if (!holdInitialized)
     {
       holdRR          = counter;
@@ -481,24 +577,24 @@ void loop()
       holdFR          = counter2;
       holdRL          = counter3;
       holdInitialized = true;
-      Serial.println("STATE 8: position hold initialised");
+      Serial.println("STATE 13: position hold initialised");
     }
 
-    holdPosition();   // continuously fight any push
+    holdPosition();   // fights any external push every iteration
 
     if (timerStarted && millis() - releaseStartTime >= 30000)
     {
       stopRobot();
       digitalWrite(pneumaticPin, LOW);
       Serial.println("PNEUMATIC OFF");
-      state = 9;
+      state = 14;
     }
   }
 
   // =====================================
-  // STATE 9 — STOP (FINISHED)
+  // STATE 14 — STOP (FINISHED)
   // =====================================
-  else if (state == 9)
+  else if (state == 14)
   {
     stopRobot();
   }
@@ -604,23 +700,15 @@ void rotateRight(int pwm)
 
 // =====================================
 // HOLD POSITION — P encoder control
-// Each wheel is driven independently to
-// return to its saved target count.
-// "Forward" direction per wheel matches
-// moveForward() pin states.
+// Each wheel driven independently toward
+// its saved target count.
 // =====================================
 void holdPosition()
 {
-  // Errors: positive = wheel is behind target (needs to spin forward)
-  int errRR = (int)(kP_pos * (holdRR - counter));    // wrr: forward = LOW
-  int errFL = (int)(kP_pos * (holdFL - counter1));   // wfl: forward = LOW
-  int errFR = (int)(kP_pos * (holdFR - counter2));   // wfr: forward = HIGH
-  int errRL = (int)(kP_pos * (holdRL - counter3));   // wrl: forward = LOW
-
-  errRR = constrain(errRR, -maxHoldPWM, maxHoldPWM);
-  errFL = constrain(errFL, -maxHoldPWM, maxHoldPWM);
-  errFR = constrain(errFR, -maxHoldPWM, maxHoldPWM);
-  errRL = constrain(errRL, -maxHoldPWM, maxHoldPWM);
+  int errRR = constrain((int)(kP_pos * (holdRR - counter)),  -maxHoldPWM, maxHoldPWM);
+  int errFL = constrain((int)(kP_pos * (holdFL - counter1)), -maxHoldPWM, maxHoldPWM);
+  int errFR = constrain((int)(kP_pos * (holdFR - counter2)), -maxHoldPWM, maxHoldPWM);
+  int errRL = constrain((int)(kP_pos * (holdRL - counter3)), -maxHoldPWM, maxHoldPWM);
 
   // RR — forward = wrr_dir LOW
   digitalWrite(wrr_dir_pin, errRR >= 0 ? LOW : HIGH);
