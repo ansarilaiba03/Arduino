@@ -29,16 +29,15 @@ const int proxPin = 12;
 
 // =====================================
 // STEPPER MOTOR 
-// (90/360)*200 = 50 steps
 // =====================================
 #define STEP_PIN 17
 #define DIR_PIN  16
 
 unsigned long stepPrevMillis       = 0;
-const unsigned long stepInterval   = 2;   // ms per half-step toggle
+const unsigned long stepInterval   = 4;   // ms per half-step toggle
 bool   stepPinState                = false;
 int    stepCount                   = 0;
-const int STEPS_90                 = 50;  // 90° worth of steps
+const int STEPS_90                 = 135;  // (90/360)*200 = 50 steps
 
 // =====================================
 // PNEUMATIC GRIPPER
@@ -58,7 +57,7 @@ long holdFR  = 0;
 long holdRL  = 0;
 
 const float kP_pos     = 0.8;   //encoder counts = 0 
-const int   maxHoldPWM = 80;
+const int   maxHoldPWM = 40;
 
 // =====================================
 // ENCODERS
@@ -90,7 +89,7 @@ volatile long counter3 = 0;   // RL
 // =====================================
 // DISTANCES (TUNE THESE)
 // =====================================
-long leftCounts1         = 550;
+long leftCounts1         = 500;
 long leftCounts2         = 200;
 long blindForwardCounts  = 420;
 long forwardCounts       = 1500;
@@ -250,8 +249,29 @@ void setup()
   // Stepper
   pinMode(STEP_PIN, OUTPUT);
   pinMode(DIR_PIN,  OUTPUT);
-  digitalWrite(STEP_PIN, LOW);
-  digitalWrite(DIR_PIN,  HIGH);
+
+  Serial.println("Holding at 0°...");
+  // Send a slow trickle of forward pulses to resist gravity
+  // Adjust holdInterval to minimum needed — too fast = overshoots
+  const unsigned long holdInterval = 4; // ms between pulses, tune this
+  unsigned long lastHoldStep = millis();
+
+  // Hold until setup finishes (or you can just leave it running)
+  // This is blocking — size the duration to your needs
+  unsigned long holdDuration = 650; // hold for 3 seconds while setup continues
+  unsigned long holdStart = millis();
+
+  digitalWrite(DIR_PIN, HIGH); // HIGH = direction that fights gravity
+  while (millis() - holdStart < holdDuration)
+  {
+    if (millis() - lastHoldStep >= holdInterval)
+    {
+      lastHoldStep = millis();
+      digitalWrite(STEP_PIN, HIGH);
+      delay(2);
+      digitalWrite(STEP_PIN, LOW);
+    }
+  }
 
   // Pneumatic
   pinMode(pneumaticPin, OUTPUT);
@@ -441,7 +461,7 @@ void loop()
   else if (state == 6)
   {
     stopRobot();
-    startStepper(true);   // DIR HIGH → 90° forward
+    startStepper(false);   // DIR HIGH → 90° forward
     state = 7;
   }
 
@@ -570,17 +590,17 @@ void loop()
   // =====================================
   else if (state == 13)
   {
-    if (!holdInitialized)
-    {
-      holdRR          = counter;
-      holdFL          = counter1;
-      holdFR          = counter2;
-      holdRL          = counter3;
-      holdInitialized = true;
-      Serial.println("STATE 13: position hold initialised");
-    }
+    // if (!holdInitialized)
+    // {
+    //   holdRR          = counter;
+    //   holdFL          = counter1;
+    //   holdFR          = counter2;
+    //   holdRL          = counter3;
+    //   holdInitialized = true;
+    //   Serial.println("STATE 13: position hold initialised");
+    // }
 
-    holdPosition();   // fights any external push every iteration
+    // holdPosition();   // fights any external push every iteration
 
     if (timerStarted && millis() - releaseStartTime >= 30000)
     {

@@ -11,14 +11,14 @@ bool stepState = false;
 int stepCount = 0;
 
 // 200 steps = 360°, so 90° = 50 steps
-const int TARGET_STEPS = 110;
+const int TARGET_STEPS = 90;
 bool motionDone = false;
 
 void setup() {
   Serial.begin(115200);
   pinMode(STEP_PIN, OUTPUT);
   pinMode(DIR_PIN, OUTPUT);
-  digitalWrite(DIR_PIN, HIGH); // forward direction
+  digitalWrite(DIR_PIN, 0); // forward direction
   digitalWrite(STEP_PIN, LOW);
 }
 
