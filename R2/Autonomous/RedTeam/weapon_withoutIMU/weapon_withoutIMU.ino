@@ -38,19 +38,19 @@ bool timerStarted = false;
 
 // RR
 int outputA = 18;
-int outputB = 48;
+int outputB = 41;
 
 // FL
 int outputA1 = 19;
-int outputB1 = 38;
+int outputB1 = 45;
 
 // FR
-int outputA2 = 20;
-int outputB2 = 30;
+int outputA2 = 2;
+int outputB2 = 49;
 
 // RL
-int outputA3 = 21;
-int outputB3 = 22;
+int outputA3 = 3;
+int outputB3 = 53;
 
 // =====================================
 // COUNTERS

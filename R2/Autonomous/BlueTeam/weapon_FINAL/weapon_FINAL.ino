@@ -258,7 +258,7 @@ void setup()
 
   // Hold until setup finishes (or you can just leave it running)
   // This is blocking — size the duration to your needs
-  unsigned long holdDuration = 650; // hold for 3 seconds while setup continues
+  unsigned long holdDuration = 720; // hold for 3 seconds while setup continues
   unsigned long holdStart = millis();
 
   digitalWrite(DIR_PIN, HIGH); // HIGH = direction that fights gravity
@@ -349,7 +349,7 @@ void loop()
   else if (state == 1)
   {
     if (avgCounts < blindForwardCounts)
-      moveForward(40);
+      moveBackward(40);
     else
     {
       stopRobot();
@@ -374,7 +374,7 @@ void loop()
       state = 4;
     }
     else if (avgCounts < forwardCounts)
-      moveForward(40);
+      moveBackward(40);
     else
     {
       stopRobot();
@@ -399,7 +399,7 @@ void loop()
       state = 4;
     }
     else if (avgCounts < forwardCounts)
-      moveBackward(40);
+      moveForward(40);
     else
     {
       stopRobot();
@@ -571,7 +571,7 @@ void loop()
   else if (state == 12)
   {
     if (avgCounts < turn90Counts)
-      rotateRight(50);
+      rotateLeft(50);
     else
     {
       stopRobot();
@@ -718,6 +718,21 @@ void rotateRight(int pwm)
   analogWrite(wrl_pwm_pin, pwm);
 }
 
+// =====================================
+// ROTATE LEFT — NO heading lock
+// =====================================
+void rotateLeft(int pwm)
+{
+  digitalWrite(wfr_dir_pin, HIGH);
+  digitalWrite(wrr_dir_pin, LOW);
+  digitalWrite(wfl_dir_pin, HIGH);
+  digitalWrite(wrl_dir_pin, HIGH);
+
+  analogWrite(wfr_pwm_pin, pwm);
+  analogWrite(wrr_pwm_pin, pwm);
+  analogWrite(wfl_pwm_pin, pwm);
+  analogWrite(wrl_pwm_pin, pwm);
+}
 // =====================================
 // HOLD POSITION — P encoder control
 // Each wheel driven independently toward
