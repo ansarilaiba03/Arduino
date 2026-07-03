@@ -12,15 +12,15 @@ Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28);
 // =====================================
 // MOTOR PINS
 // =====================================
-const int wfr_dir_pin = 27;
-const int wfl_dir_pin = 29;
-const int wrr_dir_pin = 25;
-const int wrl_dir_pin = 23;
+const int wfr_dir_pin = 27;  //orange
+const int wfl_dir_pin = 29; //red
+const int wrr_dir_pin = 25; //yellow
+const int wrl_dir_pin = 23; //green
 
-const int wfr_pwm_pin = 6;
-const int wfl_pwm_pin = 7;
-const int wrr_pwm_pin = 5;
-const int wrl_pwm_pin = 4;
+const int wfr_pwm_pin = 6; //orange
+const int wfl_pwm_pin = 7; //black
+const int wrr_pwm_pin = 11; 
+const int wrl_pwm_pin = 4; 
 
 // =====================================
 // PROXIMITY SENSOR
@@ -61,22 +61,17 @@ const int   maxHoldPWM = 40;
 
 // =====================================
 // ENCODERS
-// RR  — pin 18
-// FL  — pin 19
-// FR  — pin 2
-// RL  — pin 3
-// =====================================
 const int outputA  = 18;
-const int outputB  = 48;
+const int outputB  = 41;
 
 const int outputA1 = 19;
-const int outputB1 = 31;
+const int outputB1 = 45;
 
 const int outputA2 = 2;
-const int outputB2 = 30;
+const int outputB2 = 49;
 
 const int outputA3 = 3;
-const int outputB3 = 22;
+const int outputB3 = 53;
 
 // =====================================
 // COUNTERS
@@ -92,8 +87,8 @@ volatile long counter3 = 0;   // RL
 long leftCounts1         = 500;
 long leftCounts2         = 200;
 long blindForwardCounts  = 420;
-long forwardCounts       = 1500;
-long diagonalCounts      = 650;
+long forwardCounts       = 500;
+long diagonalCounts      = 500;
 long turn90Counts        = 600;
 
 // =====================================
@@ -338,7 +333,7 @@ void loop()
       stopRobot();
       resetEncoders();
       delay(500);
-      state = 1;
+      state = 2;
     }
   }
 

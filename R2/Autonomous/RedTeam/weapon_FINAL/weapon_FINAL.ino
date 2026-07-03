@@ -12,15 +12,6 @@ Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28);
 // =====================================
 // MOTOR PINS
 // =====================================
-// const int wfr_dir_pin = 23;
-// const int wfl_dir_pin = 25;
-// const int wrr_dir_pin = 29;
-// const int wrl_dir_pin = 27;
-
-// const int wfr_pwm_pin = 7;
-// const int wfl_pwm_pin = 6;
-// const int wrr_pwm_pin = 4;
-// const int wrl_pwm_pin = 5;
 
 const int wfr_dir_pin = 27;  //orange
 const int wfl_dir_pin = 29; //red
@@ -29,7 +20,7 @@ const int wrl_dir_pin = 23; //green
 
 const int wfr_pwm_pin = 6; //orange
 const int wfl_pwm_pin = 7; //black
-const int wrr_pwm_pin = 5; 
+const int wrr_pwm_pin = 11; 
 const int wrl_pwm_pin = 4; 
 
 // =====================================
@@ -102,8 +93,8 @@ volatile long counter3 = 0;   // RL
 long leftCounts1         = 500;
 long leftCounts2         = 200;
 long blindForwardCounts  = 420;
-long forwardCounts       = 1500;
-long diagonalCounts      = 650;
+long forwardCounts       = 500;
+long diagonalCounts      = 500;
 long turn90Counts        = 600;
 
 // =====================================
@@ -348,7 +339,7 @@ void loop()
       stopRobot();
       resetEncoders();
       delay(500);
-      state = 1;
+      state = 2;
     }
   }
 
@@ -390,7 +381,7 @@ void loop()
       stopRobot();
       resetEncoders();
       delay(500);
-      state = 3;
+      state = 14;
     }
   }
 
